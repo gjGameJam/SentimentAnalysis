@@ -1,6 +1,22 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+from trafilatura import fetch_url, extract
+
+
+def safe_extract(url: str) -> str:
+    try:
+        html = fetch_url(url)
+        if not html:
+            return None
+
+        text = extract(html)
+        return text or None
+
+    except Exception as e:
+        print(f"[WARN] Extraction failed for {url}: {e}")
+        return None
+
 
 # class to help ensure data is formatted/populated/not duplicate when preprocessing
 @dataclass(frozen=True)
@@ -44,3 +60,4 @@ class MarketTextRecord:
         # text_raw is often long; hashing full text is fine but may be slow at scale.
         # consider hashing a stable digest instead if throughput matters.
         return hash((self.symbol, self.text_raw, self.timestamp, self.source))
+

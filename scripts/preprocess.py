@@ -1,11 +1,9 @@
 # text cleaning, tokenization, normalization
 # preprocessor.py
 from typing import List
-from dataclasses import asdict
 from datetime import datetime
 import re
 from .utils.util import MarketTextRecord
-from scripts.dataLoader.finnhubLoader import FinnhubNewsLoader
 
 class MarketTextPreprocessor:
     #Preprocess raw market text data into normalized MarketTextRecord objects
@@ -66,36 +64,14 @@ class MarketTextPreprocessor:
                 .replace("\u2014", "-")
         )
 
+        # Remove unnecessary escape slashes (e.g., \')
+        text = text.replace("\\'", "'").replace('\\"', '"')
+
         # Final trim + collapse whitespace again
         text = text.strip()
         text = re.sub(r"\s+", " ", text)
 
         return text
-
-    def normalize_df_schema(self, df):
-        # Ensure datetime exists
-        if "datetime" not in df.columns:
-            raise ValueError("DataFrame missing required column: 'datetime'")
-
-        # Resolve text column (summary > text > headline)
-        text_col = None
-        for candidate in ["summary", "text", "headline"]:
-            if candidate in df.columns:
-                text_col = candidate
-                break
-
-        if text_col is None:
-            raise ValueError("DataFrame missing any text column: ['summary', 'text', 'headline']")
-
-        # Create unified 'text' column
-        df = df.copy()
-        df["text"] = df[text_col]
-
-        # Ensure url exists
-        if "url" not in df.columns:
-            df["url"] = ""
-
-        return df[["datetime", "text", "url"]]
 
 
 
@@ -112,6 +88,31 @@ class MarketTextPreprocessor:
     def dedupe_records(self, records: List[MarketTextRecord]) -> List[MarketTextRecord]:
         #Remove duplicates based on hash/equality
         return list(set(records))  # dataclass hash handles deduplication
+
+    def normalize_df_schema(self, df):
+        # Ensure datetime exists
+        if "datetime" not in df.columns:
+            raise ValueError("DataFrame missing required column: 'datetime'")
+
+        # Prefer full_text > summary > text > headline
+        text_col = None
+        for candidate in ["full_text", "summary", "text", "headline"]:
+            if candidate in df.columns:
+                text_col = candidate
+                break
+
+        if text_col is None:
+            raise ValueError("DataFrame missing any text column: ['full_text','summary','text','headline']")
+
+        # Create unified 'text' column
+        df = df.copy()
+        df["text"] = df[text_col]
+
+        # Ensure url exists
+        if "url" not in df.columns:
+            df["url"] = ""
+
+        return df[["datetime", "text", "url"]]
 
     def convert_df(self, df, symbol: str, source: str) -> List[MarketTextRecord]:
         df = self.normalize_df_schema(df)
@@ -142,21 +143,3 @@ class MarketTextPreprocessor:
         return self.dedupe_records(records)
 
 
-
-
-#function just for testing/output
-#going through loaders and making/using preprocessor will be done in main
-if __name__ == "__main__":
-    
-    loader = FinnhubNewsLoader() # example usage with Finnhub loader
-    df = loader.fetch_company_news("TSLA", days=7)
-
-    preprocessor = MarketTextPreprocessor()
-    records = preprocessor.convert_df(df, symbol="TSLA", source="finnhub")
-    for r in records[:5]:
-        print(asdict(r))
-        print() #empty line for easy viewing
-
-    # assert all(len(r.text_raw) >= preprocessor.min_text_length for r in records)
-    # assert all(isinstance(r.timestamp, datetime) for r in records)
-    # assert len(records) == len(set(records))  # dedupe verified

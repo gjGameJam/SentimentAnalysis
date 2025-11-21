@@ -4,6 +4,9 @@ import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
 from datetime import datetime, timedelta
+from scripts.utils.util import safe_extract
+import concurrent.futures
+
 
 class FinnhubNewsLoader:
     def __init__(self):
@@ -13,6 +16,7 @@ class FinnhubNewsLoader:
         self.api_key = os.getenv("FINNHUB_API_KEY")
         if not self.api_key:
             raise ValueError("FINNHUB_API_KEY not found in .env")
+
 
     def fetch_company_news(self, symbol, days=30):
         """Fetch company news for the last `days` days."""
@@ -37,12 +41,22 @@ class FinnhubNewsLoader:
         # Convert to DataFrame
         df = pd.DataFrame(data)
         df["datetime"] = pd.to_datetime(df["datetime"], unit="s")  # convert Unix timestamp
-        return df[["datetime", "headline", "source", "url", "summary"]]
 
-if __name__ == "__main__":
-    loader = FinnhubNewsLoader()
-    df = loader.fetch_company_news("TSLA", days=7)
-    #print(df.head())
-    # print all summaries
-    # for i, row in df.iterrows():
-    #     print(row["summary"])
+        # Fetch full articles concurrently
+        df = self.fetch_full_texts(df, max_workers=10)
+
+        return df[["datetime", "headline", "source", "url", "summary", "full_text"]]
+
+    def fetch_full_texts(self, df: pd.DataFrame, max_workers=8) -> pd.DataFrame:
+        """
+        Safely extract full text for all URLs in the DataFrame using multithreading.
+        Adds a 'full_text' column.
+        """
+        urls = df['url'].tolist()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Map safe_extract across URLs
+            results = list(executor.map(safe_extract, urls))
+
+        df['full_text'] = results
+        return df
