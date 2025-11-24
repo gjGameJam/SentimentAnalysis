@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 from trafilatura import fetch_url, extract
+import numpy as np
 
 
 def safe_extract(url: str) -> str:
@@ -16,6 +17,18 @@ def safe_extract(url: str) -> str:
     except Exception as e:
         print(f"[WARN] Extraction failed for {url}: {e}")
         return None
+
+def aggregate_sentiment(probabilities, timestamps=None):
+    if timestamps is None:
+        weights = np.ones(len(probabilities))
+    else:
+        # recency weighting: newer = heavier 
+        # TODO: tune decay rate if needed
+        now = max(timestamps)
+        weights = np.exp(-0.1 * ((now - timestamps) / 86400))  # per-day decay
+
+    weights = weights / weights.sum()
+    return float((probabilities * weights).sum())
 
 
 # class to help ensure data is formatted/populated/not duplicate when preprocessing
